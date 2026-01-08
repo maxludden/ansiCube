@@ -1,4 +1,4 @@
-module ansiCube
+module github.com/maxludden/ansiCube
 
 go 1.25.5
 
