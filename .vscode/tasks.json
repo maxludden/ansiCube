@@ -1,0 +1,20 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Load ENV_VARS",
+			"type": "shell",
+			"command": "source \"$ENV_VARS\"",
+			"options": {
+				"shell": {
+					"executable": "/bin/bash",
+					"args": ["-lc"]
+				}
+			},
+			"runOptions": {
+				"runOn": "folderOpen"
+			},
+			"problemMatcher": []
+		}
+	]
+}
