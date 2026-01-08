@@ -3,7 +3,7 @@ cask "ansicube" do
   name "ansicube"
   desc "Interactive ANSI 256-color explorer for the terminal"
   homepage "https://github.com/maxludden/ansiCube"
-  version "0.1.8"
+  version "0.1.8-SNAPSHOT-5cac89d"
 
   livecheck do
     skip "Auto-generated on release."
@@ -13,23 +13,23 @@ cask "ansicube" do
 
   on_macos do
     on_intel do
-      url "https://github.com/maxludden/ansiCube/releases/download/v#{version}/ansicube_#{version}_darwin_amd64.tar.gz"
-      sha256 "8f9671c2a44dcac649b4962dee3f3d4fe9463679df2c8546f70e50f70e5c9bdf"
+      url "https://github.com/maxludden/ansiCube/releases/download/v0.1.8/ansicube_#{version}_darwin_amd64.tar.gz"
+      sha256 "72e97d6c9e5e7a4e436bc4d9a4effa98e280da5976c4d37e8162e2e4666faf0e"
     end
     on_arm do
-      url "https://github.com/maxludden/ansiCube/releases/download/v#{version}/ansicube_#{version}_darwin_arm64.tar.gz"
-      sha256 "810128911698ee1818a570ee1548f47798f8f73d2228003f75030031bf19639d"
+      url "https://github.com/maxludden/ansiCube/releases/download/v0.1.8/ansicube_#{version}_darwin_arm64.tar.gz"
+      sha256 "73a425cb6869b9ce64e9021974c0e67c2fe80e7642c593e41734ffbf29ae79ee"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/maxludden/ansiCube/releases/download/v#{version}/ansicube_#{version}_linux_amd64.tar.gz"
-      sha256 "99b4824d86fbfc970b7df23ae3dafe9fde6fc371629038832a2341933ef2bc5c"
+      url "https://github.com/maxludden/ansiCube/releases/download/v0.1.8/ansicube_#{version}_linux_amd64.tar.gz"
+      sha256 "5c671b6dd1fa4bdebf93c035e535a976cf15dc182081fea17421eb436edd9514"
     end
     on_arm do
-      url "https://github.com/maxludden/ansiCube/releases/download/v#{version}/ansicube_#{version}_linux_arm64.tar.gz"
-      sha256 "65203f872b66ecbfcb23a8787bcfcdac48e71072f293874c7e1d319d6832692b"
+      url "https://github.com/maxludden/ansiCube/releases/download/v0.1.8/ansicube_#{version}_linux_arm64.tar.gz"
+      sha256 "fc89143940c18c916e32ad3562f2fc3986d4f158049565b04d3754ac32c7f248"
     end
   end
 

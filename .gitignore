@@ -1,2 +1,8 @@
 /ansi-layout
 .env
+.dist
+dist/ansicube_*_*_amd64.tar.gz
+dist/ansicube_0.1.8_darwin_arm64.tar.gz
+dist/ansicube_*_*_linux_arm64.tar.gz
+dist/ansicube_0.1.8_windows_amd64.zip
+.gitignore
