@@ -1,4 +1,4 @@
-# AnsiCube
+# AnsiCube v0.1.4
 
 An interactive ANSI 256-color explorer for the terminal.
 
