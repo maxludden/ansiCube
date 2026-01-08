@@ -1,9 +1,19 @@
 SHELL := /bin/bash
+.ONESHELL:
+.SHELLFLAGS := -eu -o pipefail -c
+ENV_FILE := .env
+LOAD_ENV := set -a; [ -f "$(ENV_FILE)" ] && source "$(ENV_FILE)"; set +a
 
 .PHONY: release
 release:
-	@set -a; source .env; set +a; goreleaser release --clean
+	@$(LOAD_ENV)
+	@ : "$${GITHUB_TOKEN:?GITHUB_TOKEN missing}"
+	@ : "$${HOMEBREW_TAP_GITHUB_TOKEN:?HOMEBREW_TAP_GITHUB_TOKEN missing}"
+	@ goreleaser release --clean
 
 .PHONY: release-dry
 release-dry:
-	@set -a; source .env; set +a; goreleaser release --clean --skip=publish
+	@$(LOAD_ENV)
+	@ : "$${GITHUB_TOKEN:?GITHUB_TOKEN missing}"
+	@ : "$${HOMEBREW_TAP_GITHUB_TOKEN:?HOMEBREW_TAP_GITHUB_TOKEN missing}"
+	@ goreleaser release --clean --skip=publish
