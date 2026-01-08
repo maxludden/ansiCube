@@ -48,7 +48,7 @@ homebrew_casks:
     homepage: "https://github.com/maxludden/ansiCube"
     description: "Interactive ANSI 256-color explorer for the terminal"
     license: "MIT"
-    binary: ansicube
+    binaries: [ ansicube ]
     commit_author:
       name: Max Ludden
       email: maxludden@users.noreply.github.com
