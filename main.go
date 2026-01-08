@@ -5,14 +5,19 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 var (
-	infoStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
+	infoStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	footerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+	toastStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
 )
 
 const (
@@ -25,7 +30,14 @@ const (
 	systemRows       = 2
 	sectionGapRows   = 1
 	defaultTileWidth = 5
+	tileHeight       = 3
+	scrollStep       = 3
+	footerLines      = 1
 )
+
+type toastClearMsg struct {
+	id int
+}
 
 type model struct {
 	lastCopied string
@@ -39,6 +51,9 @@ type model struct {
 	rowLineStarts []int
 	rowHeights    []int
 	totalLines    int
+	toastText     string
+	toastID       int
+	toastColor    lipgloss.Color
 }
 
 func initialModel() *model {
@@ -114,18 +129,36 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					colorStr := strconv.Itoa(colorID)
 					clipboard.WriteAll(colorStr)
 					m.lastCopied = colorStr
+					m.toastText = fmt.Sprintf("Copied ANSI %s to clipboard", colorStr)
+					m.toastColor = lipgloss.Color(colorStr)
+					m.toastID++
+					id := m.toastID
+					return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+						return toastClearMsg{id: id}
+					})
 				}
 			}
 		}
 		if msg.Type == tea.MouseWheelUp {
 			if m.scrollY > 0 {
-				m.scrollY--
+				m.scrollY -= scrollStep
+				if m.scrollY < 0 {
+					m.scrollY = 0
+				}
 			}
 		}
 		if msg.Type == tea.MouseWheelDown {
-			if m.scrollY < max(0, m.contentHeight()-m.winHeight) {
-				m.scrollY++
+			if m.scrollY < max(0, m.contentHeight()-m.viewportHeight()) {
+				m.scrollY += scrollStep
+				maxScroll := max(0, m.contentHeight()-m.viewportHeight())
+				if m.scrollY > maxScroll {
+					m.scrollY = maxScroll
+				}
 			}
+		}
+	case toastClearMsg:
+		if msg.id == m.toastID {
+			m.toastText = ""
 		}
 	}
 	return m, nil
@@ -145,14 +178,10 @@ func (m *model) renderTile(id, row, col, width, height int) string {
 		fg = lipgloss.Color("15") // White text
 	}
 
-	return lipgloss.NewStyle().
-		Background(bg).
-		Foreground(fg).
-		Width(width).
-		Height(height).
-		Align(lipgloss.Center).
-		AlignVertical(lipgloss.Center).
-		Render(fmt.Sprintf("%03d", id))
+	style := lipgloss.NewStyle().Background(bg).Foreground(fg)
+	content := fmt.Sprintf("%03d", id)
+	placed := lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, content)
+	return style.Render(placed)
 }
 
 func calcRowWidths(totalWidth, cols int) []int {
@@ -180,144 +209,107 @@ func calcRowWidths(totalWidth, cols int) []int {
 }
 
 func (m *model) layoutRowHeights(totalRows int) ([]int, int) {
-	extraLines := 0
-	if m.lastCopied != "" {
-		extraLines++
-	}
-	if m.confirmQ {
-		extraLines++
-	}
-	available := m.winHeight - extraLines
-	if available <= 0 {
-		available = totalRows
-	}
-	base := 1
-	extra := 0
-	if available >= totalRows {
-		base = available / totalRows
-		extra = available % totalRows
-	}
 	heights := make([]int, totalRows)
+	for i := 0; i < totalRows; i++ {
+		heights[i] = tileHeight
+	}
 	total := 0
 	for i := 0; i < totalRows; i++ {
-		h := base
-		if i < extra {
-			h++
+		if heights[i] < 1 {
+			heights[i] = 1
 		}
-		if h < 1 {
-			h = 1
-		}
-		heights[i] = h
-		total += h
+		total += heights[i]
 	}
-	total += extraLines
 	return heights, total
+}
+
+func (m *model) viewportHeight() int {
+	toastLines := 0
+	if m.toastText != "" {
+		toastLines = 1
+	}
+	confirmLines := 0
+	if m.confirmQ {
+		confirmLines = 1
+	}
+	visible := m.winHeight - footerLines - toastLines - confirmLines
+	if visible < 1 {
+		visible = 1
+	}
+	return visible
 }
 
 func (m *model) View() string {
 	m.clickMap = make(map[int]map[int]int)
-	m.rowWidths = make(map[int]int)
-	m.rowOffsets = make(map[int]int)
-	if m.blocksPerRow <= 0 {
-		m.blocksPerRow = cubeBlocks
-	}
+	m.rowColWidths = make(map[int][]int)
 
 	var b strings.Builder
-	row := 0
 
-	b.WriteString(titleStyle.Render("XTERM-256 COLOR CHART (Click to Copy)"))
+	titleLine := titleStyle.Render("ANSI Colors")
+	b.WriteString(lipgloss.Place(m.winWidth, 1, lipgloss.Center, lipgloss.Center, titleLine))
 	b.WriteString("\n\n")
-	row += 2
+	titleHeight := 2
 
-	gapTile := strings.Repeat(" ", m.tileWidth*blockGapCols)
-	cubeAreaCols := (m.blocksPerRow * cubeCols) + ((m.blocksPerRow - 1) * blockGapCols)
-	cubeAreaWidth := cubeAreaCols * m.tileWidth
-	padCubeChars := max(0, (m.winWidth-cubeAreaWidth)/2)
-	padCube := strings.Repeat(" ", padCubeChars)
-	systemTileWidth := calcFullWidthTile(m.winWidth, systemCols)
-	grayTileWidth := calcFullWidthTile(m.winWidth, grayCols)
+	totalRows := systemRows + sectionGapRows + (cubeRows * cubeTiers) + sectionGapRows + grayRows
+	cubeStart := systemRows + sectionGapRows
+	cubeEnd := cubeStart + (cubeRows * cubeTiers)
+	rowHeights, totalLines := m.layoutRowHeights(totalRows)
+	m.rowHeights = rowHeights
+	m.rowLineStarts = make([]int, totalRows)
+	m.totalLines = totalLines
 
-	for r := 0; r < systemRows; r++ {
-		var rowStr strings.Builder
-		col := 0
-		m.rowWidths[row] = systemTileWidth
-		m.rowOffsets[row] = 0
-		for c := 0; c < systemCols; c++ {
-			id := (r * 8) + c
-			rowStr.WriteString(m.renderTile(id, row, col, systemTileWidth))
-			col++
-		}
+	systemWidths := calcRowWidths(m.winWidth, systemCols)
+	cubeWidths := calcRowWidths(m.winWidth, cubeCols)
+	grayWidths := calcRowWidths(m.winWidth, grayCols)
 
-		b.WriteString(rowStr.String())
-		b.WriteString("\n")
-		row++
-	}
+	lineCursor := titleHeight
+	for row := 0; row < totalRows; row++ {
+		height := rowHeights[row]
+		m.rowLineStarts[row] = lineCursor
 
-	b.WriteString("\n")
-	row++
-
-	blockRows := (cubeBlocks + m.blocksPerRow - 1) / m.blocksPerRow
-	for blockRow := 0; blockRow < blockRows; blockRow++ {
-		for r := 0; r < cubeRows; r++ {
-			var rowStr strings.Builder
-			col := 0
-			m.rowWidths[row] = m.tileWidth
-			m.rowOffsets[row] = padCubeChars
-			rowStr.WriteString(padCube)
-			for blockCol := 0; blockCol < m.blocksPerRow; blockCol++ {
-				blockIndex := (blockRow * m.blocksPerRow) + blockCol
-				if blockIndex >= cubeBlocks {
-					rowStr.WriteString(strings.Repeat(" ", cubeCols*m.tileWidth))
-					col += cubeCols
-				} else {
-					start := 16 + (blockIndex * 72)
-					for c := 0; c < cubeCols; c++ {
-						var id int
-						if c < 6 {
-							id = start + (c * 6) + r
-						} else {
-							id = (start + 66) - ((c - 6) * 6) + r
-						}
-						rowStr.WriteString(m.renderTile(id, row, col, m.tileWidth))
-						col++
-					}
-				}
-				if blockCol < m.blocksPerRow-1 {
-					rowStr.WriteString(gapTile)
-					col += blockGapCols
-				}
+		switch {
+		case row < systemRows:
+			m.rowColWidths[row] = systemWidths
+			tiles := make([]string, 0, systemCols)
+			for c := 0; c < systemCols; c++ {
+				id := (row * 8) + c
+				tiles = append(tiles, m.renderTile(id, row, c, systemWidths[c], height))
 			}
-			b.WriteString(rowStr.String())
-			b.WriteString("\n")
-			row++
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, tiles...))
+		case row == systemRows:
+			b.WriteString(lipgloss.NewStyle().Width(m.winWidth).Height(height).Render(""))
+		case row < cubeEnd:
+			cubeIndex := row - (systemRows + sectionGapRows)
+			tier := cubeIndex / cubeRows
+			tierRow := cubeIndex % cubeRows
+			m.rowColWidths[row] = cubeWidths
+			tiles := make([]string, 0, cubeCols)
+			start := 16 + (tier * 72)
+			for c := 0; c < cubeCols; c++ {
+				var id int
+				if c < 6 {
+					id = start + (c * 6) + tierRow
+				} else {
+					id = (start + 66) - ((c - 6) * 6) + tierRow
+				}
+				tiles = append(tiles, m.renderTile(id, row, c, cubeWidths[c], height))
+			}
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, tiles...))
+		case row == cubeEnd:
+			b.WriteString(lipgloss.NewStyle().Width(m.winWidth).Height(height).Render(""))
+		default:
+			grayIndex := row - (systemRows + sectionGapRows + (cubeRows * cubeTiers) + sectionGapRows)
+			m.rowColWidths[row] = grayWidths
+			tiles := make([]string, 0, grayCols)
+			for c := 0; c < grayCols; c++ {
+				id := 232 + (grayIndex * 12) + c
+				tiles = append(tiles, m.renderTile(id, row, c, grayWidths[c], height))
+			}
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, tiles...))
 		}
-	}
 
-	b.WriteString("\n")
-	row++
-
-	for r := 0; r < grayRows; r++ {
-		var rowStr strings.Builder
-		col := 0
-		m.rowWidths[row] = grayTileWidth
-		m.rowOffsets[row] = 0
-		for c := 0; c < grayCols; c++ {
-			id := 232 + (r * 12) + c
-			rowStr.WriteString(m.renderTile(id, row, col, grayTileWidth))
-			col++
-		}
-		b.WriteString(rowStr.String())
 		b.WriteString("\n")
-		row++
-	}
-
-	if m.lastCopied != "" {
-		b.WriteString("\n")
-		b.WriteString(infoStyle.Render(fmt.Sprintf("Copied ANSI %s to clipboard!", m.lastCopied)))
-	}
-	if m.confirmQ {
-		b.WriteString("\n")
-		b.WriteString(infoStyle.Render("Quit? Press y to confirm, n to cancel."))
+		lineCursor += height
 	}
 
 	content := strings.TrimRight(b.String(), "\n")
@@ -325,35 +317,71 @@ func (m *model) View() string {
 	if m.winHeight <= 0 {
 		return content
 	}
-	maxScroll := max(0, len(lines)-m.winHeight)
+	visibleHeight := m.viewportHeight()
+	maxScroll := max(0, len(lines)-visibleHeight)
 	if m.scrollY > maxScroll {
 		m.scrollY = maxScroll
 	}
 	start := min(m.scrollY, len(lines))
-	end := min(start+m.winHeight, len(lines))
-	return strings.Join(lines[start:end], "\n")
+	end := min(start+visibleHeight, len(lines))
+	view := strings.Join(lines[start:end], "\n")
+	if m.toastText != "" {
+		toast := toastStyle.Copy().Foreground(m.toastColor).Render(m.toastText)
+		view += "\n" + toast
+	}
+	if m.confirmQ {
+		view += "\n" + infoStyle.Render("Quit? Press y to confirm, n to cancel.")
+	}
+	left := footerStyle.Render("Press q or Ctrl+C to quit.")
+	rightText := "Designed by Max Ludden"
+	right := osc8Link(gradientText(rightText), "https://github.com/maxludden")
+	view += "\n" + footerLine(m.winWidth, left, right, "Press q or Ctrl+C to quit.", rightText)
+	return view
 }
 
 func (m *model) contentHeight() int {
-	// Keep in sync with View() row accounting.
-	height := 2 // title + blank line
-	height += systemRows
-	height += 1
-	blocksPerRow := m.blocksPerRow
-	if blocksPerRow <= 0 {
-		blocksPerRow = cubeBlocks
+	totalRows := systemRows + sectionGapRows + (cubeRows * cubeTiers) + sectionGapRows + grayRows
+	_, total := m.layoutRowHeights(totalRows)
+	return total + 2
+}
+
+func gradientText(text string) string {
+	start := [3]int{255, 122, 0}
+	end := [3]int{0, 210, 255}
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return ""
 	}
-	blockRows := (cubeBlocks + blocksPerRow - 1) / blocksPerRow
-	height += cubeRows * blockRows
-	height += 1
-	height += grayRows
-	if m.lastCopied != "" {
-		height += 2
+	var b strings.Builder
+	for i, r := range runes {
+		t := float64(i) / float64(len(runes)-1)
+		if len(runes) == 1 {
+			t = 0
+		}
+		red := int(float64(start[0]) + (float64(end[0])-float64(start[0]))*t)
+		green := int(float64(start[1]) + (float64(end[1])-float64(start[1]))*t)
+		blue := int(float64(start[2]) + (float64(end[2])-float64(start[2]))*t)
+		color := lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", red, green, blue))
+		b.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(r)))
 	}
-	if m.confirmQ {
-		height += 2
+	return b.String()
+}
+
+func osc8Link(text, url string) string {
+	return "\x1b]8;;" + url + "\x07" + text + "\x1b]8;;\x07"
+}
+
+func footerLine(width int, left, right, leftPlain, rightPlain string) string {
+	if width <= 0 {
+		return left + " " + right
 	}
-	return height
+	leftWidth := runewidth.StringWidth(leftPlain)
+	rightWidth := runewidth.StringWidth(rightPlain)
+	gap := width - leftWidth - rightWidth
+	if gap < 1 {
+		return left + " " + right
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 func min(a, b int) int {
