@@ -42,6 +42,7 @@ brews:
     repository:
       owner: maxludden
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/maxludden/ansiCube"
     description: "Interactive ANSI 256-color explorer for the terminal"
     license: "MIT"
