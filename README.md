@@ -1,3 +1,5 @@
+![ANSICube](ansicube.png)
+
 # AnsiCube
 
 An interactive ANSI 256-color explorer for the terminal.
@@ -50,3 +52,17 @@ go run .
 ## License
 
 MIT
+
+---
+
+
+
+<div align="center">
+    <p>Designed by Max Ludden</p>
+    <br />
+    <img
+        src="MaxLogo-animated.svg"
+        alt="Max Ludden's Logo"
+        width="20%"
+    />
+</div>
