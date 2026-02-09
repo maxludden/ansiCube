@@ -129,7 +129,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					colorStr := strconv.Itoa(colorID)
 					clipboard.WriteAll(colorStr)
 					m.lastCopied = colorStr
-					m.toastText = fmt.Sprintf("Copied ANSI %s to clipboard", colorStr)
+					m.toastText = fmt.Sprintf("Copied `%s` to clipboard", colorStr)
 					m.toastColor = lipgloss.Color(colorStr)
 					m.toastID++
 					id := m.toastID
@@ -326,7 +326,8 @@ func (m *model) View() string {
 	end := min(start+visibleHeight, len(lines))
 	view := strings.Join(lines[start:end], "\n")
 	if m.toastText != "" {
-		toast := toastStyle.Copy().Foreground(m.toastColor).Render(m.toastText)
+		style := toastStyle
+		toast := style.Foreground(m.toastColor).Render(m.toastText)
 		view += "\n" + toast
 	}
 	if m.confirmQ {

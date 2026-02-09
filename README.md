@@ -6,6 +6,8 @@ An interactive ANSI 256-color explorer for the terminal.
 
 AnsiCube renders system colors, the full 6×6×6 color cube, and grayscale ramps as clickable tiles that automatically adapt to your terminal size. Click any color to copy its ANSI color code directly to the clipboard, with instant visual feedback. It supports mouse interaction, smooth scrolling, dynamic resizing, and high-contrast text for readability. Built with Bubble Tea and Lip Gloss.
 
+![](ANSICube-icon.png)
+
 ## Features
 
 - Click any tile to copy its ANSI color number to the clipboard
