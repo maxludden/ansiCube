@@ -54,6 +54,8 @@ jobs:
           ls -l docs/assets/screenshots
 
       - uses: astral-sh/setup-uv@v10.4.0 # no major-version tag is published
+        with:
+          enable-cache: false # no Python lockfile to key a cache on
 
       - name: Build site
         run: uvx zensical@0.1.3 build --clean --strict
