@@ -8,26 +8,38 @@ on:
 permissions:
   contents: write
 
+# Serialize releases so an older tag can never update the Homebrew tap after
+# a newer one.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Extract release notes from CHANGELOG.md
+        run: scripts/release-notes.sh "${GITHUB_REF_NAME}" > "${RUNNER_TEMP}/release-notes.md"
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: latest
-          args: release --clean
+          version: "~> v2"
+          args: release --clean --release-notes ${{ runner.temp }}/release-notes.md
         env:
-          GITHUB_TOKEN: $GITHUB_TOKEN
-          HOMEBREW_TAP_GITHUB_TOKEN: $HOMEBREW_TAP_GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

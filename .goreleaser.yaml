@@ -5,6 +5,7 @@ project_name: ansicube
 before:
   hooks:
     - go mod tidy
+    - go test ./...
 
 builds:
   - id: ansicube
@@ -12,6 +13,11 @@ builds:
     binary: ansicube
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - darwin
       - linux
@@ -49,6 +55,14 @@ homebrew_casks:
     description: "Interactive ANSI 256-color explorer for the terminal"
     license: "MIT"
     binaries: [ ansicube ]
+    # The binaries are not notarized; strip the quarantine flag so macOS
+    # Gatekeeper does not block the first launch.
+    hooks:
+      post:
+        install_steps: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ansicube"]
+          end
     commit_author:
       name: Max Ludden
       email: maxludden@users.noreply.github.com
