@@ -22,11 +22,6 @@ on:
 permissions:
   contents: read
 
-# Never run two deployments at once; let an in-progress one finish.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -71,8 +66,14 @@ jobs:
           path: site
 
   deploy:
-    if: github.event_name != 'pull_request'
+    # Only main is published; PR and other-branch runs just build.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
+    # Never run two deployments at once; let an in-progress one finish.
+    # Scoped to this job so PR builds cannot displace a pending deployment.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       pages: write

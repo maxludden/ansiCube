@@ -42,6 +42,8 @@ ansicube            # launch the explorer
 ansicube --version  # print the version
 ```
 
+If you installed with `go install`, run `ansiCube` instead.
+
 ## Controls
 
 | Input | Action |

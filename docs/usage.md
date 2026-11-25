@@ -6,6 +6,8 @@ Run the explorer:
 ansicube
 ```
 
+If you installed with `go install`, the command is `ansiCube` instead.
+
 It opens full screen. Your terminal is restored when you quit.
 
 ## Controls

@@ -2,8 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -86,11 +88,15 @@ func TestQuitKeys(t *testing.T) {
 func TestClickCopiesColor(t *testing.T) {
 	m, copied := testModel(t, nil)
 	_, cmd := m.Update(tea.MouseClickMsg{X: 0, Y: headerLines + 3*tileHeight, Button: tea.MouseLeft})
-	if cmd == nil {
-		t.Fatal("expected toast clear command")
+	result, ok := runBatch(t, cmd)
+	if !ok {
+		t.Fatal("click did not start a clipboard write")
 	}
 	if len(*copied) != 1 || (*copied)[0] != "16" {
 		t.Fatalf("copied = %v, want [16]", *copied)
+	}
+	if _, cmd := m.Update(result); cmd != nil {
+		t.Error("successful write should not fall back to OSC 52")
 	}
 	if m.toastErr || m.toastColor != 16 || !strings.Contains(m.render(), "copied to clipboard") {
 		t.Errorf("unexpected toast state: %+v", m)
@@ -118,12 +124,92 @@ func TestClickIgnoresNonTiles(t *testing.T) {
 	}
 }
 
-// TestClipboardFailureFallsBack checks the error toast on clipboard failure.
+// TestClipboardFailureFallsBack checks a failed native write shows an error
+// toast and issues an OSC 52 write of the same color.
 func TestClipboardFailureFallsBack(t *testing.T) {
 	m, _ := testModel(t, errors.New("no xclip"))
 	_, cmd := m.Update(tea.MouseClickMsg{X: 0, Y: headerLines, Button: tea.MouseLeft})
-	if cmd == nil || !m.toastErr || !strings.Contains(m.toastText, "OSC 52") {
+	result, ok := runBatch(t, cmd)
+	if !ok || result.err == nil {
+		t.Fatalf("expected a failed clipboard result, got %+v", result)
+	}
+	_, cmd = m.Update(result)
+	if !m.toastErr || !strings.Contains(m.toastText, "OSC 52") {
 		t.Errorf("expected OSC 52 fallback toast, got %q", m.toastText)
+	}
+	if cmd == nil {
+		t.Fatal("expected an OSC 52 clipboard command")
+	}
+	// tea.SetClipboard's message type is unexported; check its name and payload.
+	msg := cmd()
+	if typ := fmt.Sprintf("%T", msg); !strings.Contains(typ, "setClipboardMsg") || fmt.Sprint(msg) != "0" {
+		t.Errorf("fallback message = %s(%v), want setClipboardMsg(0)", typ, msg)
+	}
+}
+
+// TestStaleClipboardResultIgnored checks a superseded click cannot trigger
+// an OSC 52 write that would overwrite the newer color.
+func TestStaleClipboardResultIgnored(t *testing.T) {
+	m, _ := testModel(t, errors.New("no xclip"))
+	m.Update(tea.MouseClickMsg{X: 0, Y: headerLines, Button: tea.MouseLeft})
+	m.Update(tea.MouseClickMsg{X: 12, Y: headerLines, Button: tea.MouseLeft})
+	stale := clipboardResultMsg{id: m.toastID - 1, text: "0", err: errors.New("no xclip")}
+	if _, cmd := m.Update(stale); cmd != nil || m.toastErr {
+		t.Error("stale result should be ignored")
+	}
+}
+
+// TestClipboardWriterSkipsStale checks older writes never land after newer ones.
+func TestClipboardWriterSkipsStale(t *testing.T) {
+	var got []string
+	w := newClipboardWriter(func(s string) error { got = append(got, s); return nil })
+	if skipped, _ := w.Write(2, "new"); skipped {
+		t.Fatal("first write skipped")
+	}
+	if skipped, _ := w.Write(1, "old"); !skipped {
+		t.Error("older write should be skipped")
+	}
+	if len(got) != 1 || got[0] != "new" {
+		t.Errorf("clipboard writes = %v, want [new]", got)
+	}
+}
+
+// runBatch executes cmd (possibly a tea.Batch) and returns the first
+// clipboardResultMsg it produces. Tick commands are skipped, not awaited.
+func runBatch(t *testing.T, cmd tea.Cmd) (clipboardResultMsg, bool) {
+	t.Helper()
+	if cmd == nil {
+		return clipboardResultMsg{}, false
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if c == nil {
+				continue
+			}
+			// Each Batch entry is either the clipboard write or a toast tick;
+			// run only non-tick commands so the test does not sleep.
+			if r, ok := runIfClipboard(c); ok {
+				return r, true
+			}
+		}
+		return clipboardResultMsg{}, false
+	}
+	r, ok := msg.(clipboardResultMsg)
+	return r, ok
+}
+
+// runIfClipboard runs c in a goroutine and returns its result if it is a
+// clipboardResultMsg delivered promptly; tick commands time out and are ignored.
+func runIfClipboard(c tea.Cmd) (clipboardResultMsg, bool) {
+	ch := make(chan tea.Msg, 1)
+	go func() { ch <- c() }()
+	select {
+	case msg := <-ch:
+		r, ok := msg.(clipboardResultMsg)
+		return r, ok
+	case <-time.After(200 * time.Millisecond):
+		return clipboardResultMsg{}, false
 	}
 }
 
@@ -163,10 +249,15 @@ func TestRenderFillsWindow(t *testing.T) {
 	if len(lines) != m.winHeight {
 		t.Fatalf("rendered %d lines, want %d", len(lines), m.winHeight)
 	}
-	for i, l := range lines[:viewportLines(m.winHeight)] {
+	for i, l := range lines {
 		if w := lipgloss.Width(l); w > m.winWidth {
 			t.Errorf("line %d width %d exceeds %d", i, w, m.winWidth)
 		}
+	}
+	// Tile rows must span the full window width.
+	tileLine := lines[headerLines]
+	if w := lipgloss.Width(tileLine); w != m.winWidth {
+		t.Errorf("tile row width %d, want %d", w, m.winWidth)
 	}
 	if !strings.Contains(lines[len(lines)-1], quitHint) {
 		t.Error("footer missing quit hint")
@@ -218,5 +309,25 @@ func TestGradientLink(t *testing.T) {
 	}
 	if gradientLink("", authorURL) != "" {
 		t.Error("empty text should render empty")
+	}
+}
+
+// TestNarrowWindowChromeFits checks the status and footer rows are truncated
+// rather than wrapping in a narrow window.
+func TestNarrowWindowChromeFits(t *testing.T) {
+	m, _ := testModel(t, errors.New("a very long clipboard error message"))
+	m.Update(tea.WindowSizeMsg{Width: 20, Height: 10})
+	_, cmd := m.Update(tea.MouseClickMsg{X: 0, Y: headerLines, Button: tea.MouseLeft})
+	if r, ok := runBatch(t, cmd); ok {
+		m.Update(r)
+	}
+	for _, line := range []string{m.statusLine(), m.footerLine()} {
+		if w := lipgloss.Width(line); w > 20 {
+			t.Errorf("chrome line width %d exceeds 20: %q", w, stripANSI(line))
+		}
+	}
+	m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if w := lipgloss.Width(m.statusLine()); w > 20 {
+		t.Errorf("quit prompt width %d exceeds 20", w)
 	}
 }

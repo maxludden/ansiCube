@@ -29,7 +29,7 @@
 ## Check the install
 
 ```bash
-ansicube --version
+ansicube --version   # ansiCube --version if you used go install
 ```
 
 ## Requirements

@@ -52,6 +52,10 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The release workflow passed tokens as literal strings instead of secrets and
   pinned a Go version too old to build the module.
 - Clipboard write errors were silently ignored.
+- A slow clipboard backend could freeze the UI; writes now run asynchronously
+  and are serialized so an older click never overwrites a newer one.
+- The status line and footer are truncated in narrow windows instead of
+  wrapping and shifting the palette.
 - Errors on exit are printed to stderr with a trailing newline.
 - The README referenced a missing image.
 

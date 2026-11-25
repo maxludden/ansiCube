@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -33,11 +34,20 @@ var (
 // ids are ignored so a fast second click keeps its full display time.
 type toastClearMsg struct{ id int }
 
+// clipboardResultMsg reports the outcome of an asynchronous clipboard write
+// started by the click with the given id.
+type clipboardResultMsg struct {
+	id      int
+	text    string
+	err     error
+	skipped bool
+}
+
 // model is the Bubble Tea state for the palette explorer. Rendering is a pure
 // function of this state; all mutation happens in Update.
 type model struct {
 	rows      []paletteRow
-	copy      func(string) error // writes to the system clipboard
+	clip      *clipboardWriter // serialized native clipboard writes
 	winWidth  int
 	winHeight int
 	scrollY   int
@@ -51,7 +61,7 @@ type model struct {
 
 // newModel builds the initial model using copyFn for clipboard writes.
 func newModel(copyFn func(string) error) *model {
-	return &model{rows: paletteRows(), copy: copyFn, toastColor: -1}
+	return &model{rows: paletteRows(), clip: newClipboardWriter(copyFn), toastColor: -1}
 }
 
 // Init implements tea.Model.
@@ -78,6 +88,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseWheelDown:
 			m.scrollTo(m.scrollY + scrollStep)
 		}
+	case clipboardResultMsg:
+		return m, m.handleClipboardResult(msg)
 	case toastClearMsg:
 		if msg.id == m.toastID {
 			m.toastText = ""
@@ -124,9 +136,9 @@ func (m *model) scrollTo(y int) {
 	m.scrollY = min(max(y, 0), maxScroll(m.rows, m.winHeight))
 }
 
-// copyColor copies the color number to the clipboard and shows a toast. If
-// the native clipboard is unavailable (e.g. over SSH or without xclip), it
-// falls back to the OSC 52 terminal clipboard escape sequence.
+// copyColor shows a toast and starts copying the color number to the
+// clipboard. The native write runs as a command so a slow clipboard backend
+// cannot freeze the UI; its result arrives as a clipboardResultMsg.
 func (m *model) copyColor(id int) tea.Cmd {
 	text := strconv.Itoa(id)
 	m.toastID++
@@ -134,13 +146,25 @@ func (m *model) copyColor(id int) tea.Cmd {
 	m.toastErr = false
 	m.toastText = "copied to clipboard"
 
-	cmds := []tea.Cmd{clearToastAfter(m.toastID)}
-	if err := m.copy(text); err != nil {
-		m.toastErr = true
-		m.toastText = fmt.Sprintf("native clipboard unavailable (%v); sent via OSC 52", err)
-		cmds = append(cmds, tea.SetClipboard(text))
+	seq, clip := m.toastID, m.clip
+	write := func() tea.Msg {
+		skipped, err := clip.Write(seq, text)
+		return clipboardResultMsg{id: seq, text: text, err: err, skipped: skipped}
 	}
-	return tea.Batch(cmds...)
+	return tea.Batch(clearToastAfter(seq), write)
+}
+
+// handleClipboardResult falls back to the OSC 52 terminal clipboard when the
+// native write failed (e.g. over SSH or without xclip). Results from clicks
+// that a newer click has superseded are ignored, so only the latest color
+// can end up on the clipboard.
+func (m *model) handleClipboardResult(msg clipboardResultMsg) tea.Cmd {
+	if msg.id != m.toastID || msg.skipped || msg.err == nil {
+		return nil
+	}
+	m.toastErr = true
+	m.toastText = fmt.Sprintf("native clipboard unavailable (%v); sent via OSC 52", msg.err)
+	return tea.SetClipboard(msg.text)
 }
 
 // clearToastAfter returns a command that hides toast id after toastDuration.
@@ -224,7 +248,7 @@ func renderTile(id, width, height int) string {
 func (m *model) statusLine() string {
 	switch {
 	case m.confirmQ:
-		return infoStyle.Render("Quit? Press y to confirm, n to cancel.")
+		return fitWidth(infoStyle.Render("Quit? Press y to confirm, n to cancel."), m.winWidth)
 	case m.toastText == "":
 		return ""
 	}
@@ -236,7 +260,16 @@ func (m *model) statusLine() string {
 	if m.toastColor >= 0 {
 		swatch = tileStyle(m.toastColor).Render(fmt.Sprintf(" %03d ", m.toastColor)) + " "
 	}
-	return swatch + style.Render(m.toastText)
+	return fitWidth(swatch+style.Render(m.toastText), m.winWidth)
+}
+
+// fitWidth truncates s to width cells (ANSI-aware). A non-positive width,
+// meaning the window size is not yet known, leaves s unchanged.
+func fitWidth(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	return ansi.Truncate(s, width, "…")
 }
 
 // footerLine renders the quit hint on the left and the author credit,
@@ -246,7 +279,8 @@ func (m *model) footerLine() string {
 	right := gradientLink(authorName, authorURL)
 	gap := m.winWidth - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
-		gap = 1
+		// Not enough room for both: keep the quit hint, drop the credit.
+		return fitWidth(left, m.winWidth)
 	}
 	return left + strings.Repeat(" ", gap) + right
 }

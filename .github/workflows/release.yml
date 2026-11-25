@@ -8,6 +8,12 @@ on:
 permissions:
   contents: write
 
+# Serialize releases so an older tag can never update the Homebrew tap after
+# a newer one.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
