@@ -35,6 +35,11 @@ archives:
         formats:
           - zip
 
+release:
+  # Let a failed release be rerun without deleting the GitHub release first:
+  # assets that already exist are replaced instead of failing the upload.
+  replace_existing_artifacts: true
+
 checksum:
   name_template: "checksums.txt"
 
