@@ -1,0 +1,67 @@
+# Documentation site for ANSI Cube, built with Zensical (https://zensical.org).
+# Build locally with `make docs`; CI deploys it to GitHub Pages.
+
+[project]
+site_name = "ANSI Cube"
+site_description = "An interactive ANSI 256-color explorer for the terminal."
+site_url = "https://maxludden.github.io/ansiCube/"
+site_author = "Max Ludden"
+repo_url = "https://github.com/maxludden/ansiCube"
+repo_name = "maxludden/ansiCube"
+edit_uri = "edit/main/docs/"
+copyright = "Copyright &copy; 2026 Max Ludden — MIT License"
+nav = [
+  { "Overview" = "index.md" },
+  { "Installation" = "install.md" },
+  { "Usage" = "usage.md" },
+  { "Screenshots" = "screenshots.md" },
+  { "Development" = "development.md" },
+  { "Changelog" = "changelog.md" },
+]
+
+[project.theme]
+language = "en"
+logo = "assets/logo.svg"
+favicon = "assets/logo.svg"
+features = [
+  "content.action.edit",
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.instant",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+# Lets changelog.md include the repository's CHANGELOG.md verbatim.
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
