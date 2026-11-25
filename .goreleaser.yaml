@@ -64,9 +64,12 @@ homebrew_casks:
     # Gatekeeper does not block the first launch.
     hooks:
       post:
+        # Homebrew's install-steps DSL only allows its own step calls
+        # (run, on_macos, ...), not arbitrary Ruby like `if OS.mac?` or
+        # `system_command`. Relative paths resolve against staged_path.
         install_steps: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ansicube"]
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "ansicube"], chdir: "."
           end
     commit_author:
       name: Max Ludden
